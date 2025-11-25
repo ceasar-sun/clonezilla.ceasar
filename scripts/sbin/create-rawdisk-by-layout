@@ -1,0 +1,214 @@
+#!/usr/bin/env bash
+#
+# create-rawdisk-by-layout  -o <output‑image>
+#
+#  建立一個 raw .img 檔，內含以下 GPT 版面（sector size = 512 B）：
+#
+#   #   Start   End   Size          Type  Name
+#   1    256    767   256 KiB       8300  fsbl
+#   2    768    895   64  KiB       8300  env
+#   3   2048   4095   1  MiB       8300  opensbi
+#   4   4096   8191   2  MiB       8300  uboot
+#   5   8192 1974271  960 MiB      8300  bootfs   → FAT‑32
+#   6 1974272 2095103  59  MiB      0700  rootfs   → ext4
+#
+#  Partition 1‑4 只建立，不FORMAT；
+#  Partition 5  → FAT‑32 (label bootfs)
+#  Partition 6  → ext4   (label rootfs)
+#
+#  依賴工具 : dd, losetup, partprobe, parted, mkfs.fat, mkfs.ext4, grep, awk
+#
+#  作者 : ChatGPT (2025‑11‑21)
+#  授權: MIT
+
+set -euo pipefail
+
+# -------------------------------------------------------------------------
+#  Constants – change here if you need a different sector size
+# -------------------------------------------------------------------------
+SECTOR_SIZE=512                # bytes per sector (standard)
+
+# Partition definition:  num:start:end:type GUID:name
+declare -a PARTS=(
+    "1:256:767:raw:fsbl"
+    "2:768:895:raw:env"
+    "3:2048:4095:raw:opensbi"
+    "4:4096:8191:raw:uboot"
+    "5:8192:1974271:fat32:bootfs:boot,esp,hidden"
+    "6:1974272:2095103:ext4:rootfs"
+)
+
+# 先檢查必須的 mkfs 程式是否在系統中
+declare -A MKFS_CMD=(
+    [fat16]="mkfs.fat -F16 -n"
+    [fat32]="mkfs.fat -F32 -n"
+    [ext2]="mkfs.ext2 -L"
+    [ext3]="mkfs.ext3 -L"
+    [ext4]="mkfs.ext4 -L"
+    [xfs]="mkfs.xfs -L"
+    [reiserfs]="mkfs.reiserfs -f -l"
+    [exfat]="mkfs.exfat -n"
+)
+
+# -------------------------------------------------------------------------
+#  Helper functions
+# -------------------------------------------------------------------------
+die() { printf '%s\n' "$*" >&2; exit 1; }
+
+usage() {
+    cat <<EOF
+Usage: sudo $(basename "$0") -o <output‑image>
+
+Create a raw disk image that matches the GPT layout described above.
+
+  -o <file>   Output image file (will be overwritten if it already exists)
+  -h          Show this help
+EOF
+    exit 0
+}
+
+# 1.  Super privilege check ----------
+require_root() {
+    #$EUID reliable only in bash; sh may use $UID
+    if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+        cat >&2 <<EOF
+=====================================================================
+Warning： Root or sudo privilege required ; e.g：
+  sudo $(basename "$0") -o my-raw-disk.img
+=====================================================================
+EOF
+        exit 1
+    fi
+}
+
+require_root
+
+# -------------------------------------------------------------------------
+#  Parse arguments
+# -------------------------------------------------------------------------
+OUTPUT=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -o)
+            shift
+            [[ $# -gt 0 ]] || die "Missing argument for -o"
+            OUTPUT=$1
+            ;;
+        -h|--help) usage ;;
+        *) die "Unknown option: $1" ;;
+    esac
+    shift
+done
+
+format_rawdisk_by_items(){
+
+    # -------------------------------------------------------------------------
+    #  4)  Map the image to a loop device (with partitions)
+    # -------------------------------------------------------------------------
+    echo "Attaching image to a loop device …"
+    LOOPDEV=$(losetup --show -Pf "${OUTPUT}")   # -P -> /dev/loopXpY nodes
+    partprobe "${LOOPDEV}"                     # 確保 kernel 掃描分割表
+
+    # 逐一建立每個分割區
+    for entry in "${PARTS[@]}"; do
+        IFS=':' read -r num start end fs name <<< "$entry"
+        echo "  - format partition ${num} to (${fs}) …"
+
+
+            # -------------------------------------------------------------------------
+            #  4.1)  Format file‑systems by PARTS
+            # -------------------------------------------------------------------------
+            echo "Formatting partition 5 (bootfs) as FAT‑32 …"
+            if [ "X${fs}" = "Xfat32" ] ; then 
+                #echo mkfs.fat -F32 -n "${name}" "${LOOPDEV}p${num}"
+                mkfs.fat -F32 -n "${name}" "${LOOPDEV}p${num}" >/dev/null
+            elif [ "X${fs}" = "Xext4"  ] ; then 
+                #echo mkfs.ext4 -L "${name}" -q "${LOOPDEV}p${num}"
+                mkfs.ext4 -L "${name}" -q "${LOOPDEV}p${num}" >/dev/null
+            else 
+                echo "* no support FS :${fs} for ${num} ... , skip"
+            fi
+    done
+
+    # -------------------------------------------------------------------------
+    #  5️⃣  Clean‑up – detach loop device
+    # -------------------------------------------------------------------------
+    echo "Detaching loop device ${LOOPDEV} …"
+    losetup -d "${LOOPDEV}"
+}
+
+
+[[ -n "$OUTPUT" ]] || die "Output image not specified (use -o)."
+
+
+# -------------------------------------------------
+# 計算映像大小 (sector 數)
+# -------------------------------------------------
+max_end=0
+for entry in "${PARTS[@]}"; do
+    IFS=':' read -r _ _ end _ _ <<< "$entry"
+    (( end > max_end )) && max_end=$end
+done
+TOTAL_SECTORS=$((max_end + 34))
+
+# -------------------------------------------------------------------------
+#  Sanity checks
+# -------------------------------------------------------------------------
+for cmd in dd losetup partprobe mkfs.fat mkfs.ext4 parted; do
+    command -v "$cmd" >/dev/null 2>&1 || die "Required command not found: $cmd"
+done
+
+# -------------------------------------------------------------------------
+#  1️⃣  Create a zero‑filled raw image file
+# -------------------------------------------------------------------------
+echo "Creating raw image ${OUTPUT} (${TOTAL_SECTORS} sectors × ${SECTOR_SIZE} B)…"
+dd if=/dev/zero of="${OUTPUT}" bs=${SECTOR_SIZE} count=${TOTAL_SECTORS} status=none
+
+# -------------------------------------------------------------------------
+#  2️⃣  Build the GPT table with `parted`
+# -------------------------------------------------------------------------
+echo "Creating GPT layout with parted …"
+parted -s "${OUTPUT}" mklabel gpt > /dev/null
+
+# 讓所有參數使用 sector 為單位
+parted -s "${OUTPUT}" unit s print > /dev/null
+
+# 逐一建立每個分割區
+for entry in "${PARTS[@]}"; do
+    IFS=':' read -r num start end guid name flags <<< "$entry"
+
+    echo "  - creating partition ${num} (${name}) …"
+
+    # 1) 建立分割區 (parted 需要名稱與「檔案系統類型」)
+    #    這裡的檔案系統類型只是一個字串，隨便填「ext4」即可；之後會自行格式化。
+    echo parted -s "$OUTPUT" unit s mkpart "${name}" ext4 "${start}s" "${end}s" #> /dev/null
+    parted -s "$OUTPUT" unit s mkpart "${name}" ext4 "${start}s" "${end}s" > /dev/null
+
+    # 2) 設定人類可讀的分割區名稱（ASCII）
+    #    `name <num> "<label>"` 也是獨立指令。
+    echo parted -s "$OUTPUT" name "${num}" "${name}" #> /dev/null
+    parted -s "$OUTPUT" name "${num}" "${name}" > /dev/null
+    #read
+
+    # 3) 設定 flags
+    [[ -z $flags ]] && continue  # 沒有 flags → 不需要任何操作
+    # flags 以逗號分隔，例如 "boot,esp,hidden"
+    IFS=',' read -ra flag_arr <<< "$flags"
+    for flag in "${flag_arr[@]}"; do
+        # 去掉可能的前後空白
+        flag=${flag//[[:space:]]/}
+        # Parted 的指令是：parted -s <image> set <part> <flag> on
+        echo "設定 flag '$flag' 到 partition $num ..."
+        parted -s "$OUTPUT" set "${num}" "${flag}" on
+    done
+done
+
+# 顯示最終的表格，供除錯
+echo "GPT layout after creation:"
+parted -s "${OUTPUT}" unit s print
+
+format_rawdisk_by_items
+
+echo "Done. Image ${OUTPUT} is ready."
+exit 0
