@@ -536,7 +536,7 @@ dump_hardware_software_info() {
     # while file "parts" are common for savedisk and saveparts.
     for ipart in `cat $img_dir/parts`; do
       hd_tmp="$(get_diskname $ipart)"
-      if [ -z "$(echo $dsk_list | grep -Ew $hd_tmp)" ]; then
+      if [ -z "$(echo $dsk_list | grep -Ew $hd_tmp 2>/dev/null)" ]; then
         dsk_list="$dsk_list $hd_tmp"
       fi
     done
@@ -1723,6 +1723,7 @@ save_part_by_dd() {
 #
 image_save() {
   local source_dev="$(format_dev_name_with_leading_dev $1)" # e.g., /dev/sda1
+  local source_dev_pre_bitlocker="$source_dev"
   local tgt_dir="$2"
   local tgt_file="$3"
   local image_name_
@@ -1768,7 +1769,7 @@ image_save() {
   fi
 
   if [ -z "$part_fs" ]; then
-    echo "Refusing to fsck unknown or unsupported file system on $source_dev." | tee --append ${OCS_LOGFILE}
+    echo "Skip fscking unknown or unsupported file system on $source_dev." | tee --append ${OCS_LOGFILE}
   else
     if [ "$fsck_src_part_auto" = "yes" ]; then
       # It's auto (actually say "yes" to all), so we add "-y" for fsck.
@@ -1786,7 +1787,7 @@ image_save() {
   else
     part_fs_shown="$part_fs"
   fi
-  echo "$source_dev $part_fs $part_size" >> "$tgt_dir/dev-fs.list"
+  echo "$source_dev_pre_bitlocker $part_fs $part_size" >> "$tgt_dir/dev-fs.list"
 
   # do_fs_save is a global variable
   if [ "$do_fs_save" = "yes" ]; then
@@ -4163,7 +4164,8 @@ task_postprocessing() {
       ;;
   esac
 
-  unmount_dislocker_mount_point_if_necessary
+  echo "We are not unmouting the bitlocker partitions, for if we do we break the clone_server (ocs-onthefly)"
+  # unmount_dislocker_mount_point_if_necessary
 
   # Try to put Clonezilla related log files to Clonezilla live USB drive
   if [ "$put_log_usb" = "yes" ]; then
@@ -4899,8 +4901,8 @@ deal_with_bitlocker_partitions() {
 ask_to_decrypt_bitlocker_partition() {
   # this will ask for the bitlocker password of partition $1 ( $device )
   # and use dislocker to mount it on "${bitlocker_decr_part_dir}/$device"
-  # example: "/tmp/bitlocker_decrypted_partitions/sdb2"
-  # after the mount, a file called  "/tmp/bitlocker_decrypted_partitions/sdb2/dislocker-file" should exist.
+  # example: "/tmp/bitlocker_decrypted_part/sdb2"
+  # after the mount, a file called  "/tmp/bitlocker_decrypted_part/sdb2/dislocker-file" should exist.
   # the existence of this file should inform the backup function to backup it instead of the encrypted device
 
   local device
@@ -8025,7 +8027,7 @@ start_ocs_service() {
       fi
       for ihd in $target_hd; do
         for partition in `get_parts_list_from_img "$imagedir/$target_dir"`; do
-          if [ -n "$(echo "$partition" | grep -iE "$ihd")" ]; then
+          if [ -n "$(echo "$partition" | grep -iE "$ihd|mtdblock|mmcblk.*boot")" ]; then
             # Ex. hda2 is for hda, so when hda is chosen, we will include hda2 as target partition.
             target_parts="$target_parts $partition"
           fi
@@ -8078,7 +8080,7 @@ start_ocs_service() {
       fi
       for ihd in $target_hd; do
         for partition in `get_parts_list_from_img $imagedir/"$target_dir"`; do
-          if [ -n "$(echo "$partition" | grep -iE "$ihd")" ]; then
+          if [ -n "$(echo "$partition" | grep -iE "$ihd|mtdblock|mmcblk.*boot")" ]; then
             # Ex. hda2 is for hda, so when hda is chosen, we will include hda2 as target partition.
             target_parts="$target_parts $partition"
           fi
@@ -8606,6 +8608,10 @@ create_temp_image_for_different_target_dev_name_if_necessary() {
   # Check if target disk/part name exists in the image.
   # It might be the image from disk or partition (including bare block device with file system) that we need to convert
   # Input: $target_hd (for restoredisk); $target_parts (for restoreparts); dsksname_from_img
+  if [ "$(echo $target_hd | wc -w)" -gt 1 ]; then
+     echo "Multiple target devices detected ($target_hd). Skipping source-destination device conversion in the image dir."
+     return 5
+  fi
   if [ -n "$target_hd" ]; then
     dest_dev_="$target_hd"
   elif [ -n "$target_parts" ]; then
@@ -9165,7 +9171,7 @@ task_saveparts() {
   fi
 
   echo -n "Searching MTD block (/dev/mtdblock*) and eMMC boot (/dev/mmcblk*boot*) devices... "
-  target_parts+=" $(check_mtd_emmcboot_dev)"
+  target_parts+=" $(check_mtd_emmcboot_dev save)"
   echo "done!"
 
   # check if the device exists
@@ -9552,7 +9558,7 @@ task_restoredisk() {
   # //NOTE// file parts already contained all the available partitions name.
   for ihd in $target_hd; do
     for partition in `get_parts_list_from_img "$ocsroot/$target_dir"`; do
-      if [ -n "$(echo "$partition" | grep -iE "$ihd")" ]; then
+      if [ -n "$(echo "$partition" | grep -iE "$ihd|mtdblock|mmcblk.*boot")" ]; then
         # Ex. hda2 is for hda, so when hda is chosen, we will include hda2 as target partition.
         target_parts="$target_parts $partition"
       fi
@@ -16138,16 +16144,14 @@ clean_raid_metadata_in_disk() {
 } # end of clean_raid_metadata_in_disk
 #
 unmount_dislocker_mount_point_if_necessary(){
-  # here we unmount both /home/partimage and also backup partitions on $bitlocker_decr_part_dir (/tmp/bitlocker_decrypted_partitions)
-
-  # Function to unmount dislocker (bitlocker) device
+  # Function to unmount dislocker (bitlocker) device, $bitlocker_decr_part_dir (/tmp/bitlocker_decrypted_part)
   local im dir_2_umount cmd_ rc dislocker_backup_partitions
   # root@debian:~# mount |grep -Ew /home/partimag
   # /tmp/ocsroot_bitlocker_root/dislocker-file on /home/partimag type fuseblk (rw,noatime,user_id=0,group_id=0,allow_other,blksize=4096)
 
-  dislocker_backup_partitions=$(LC_ALL=C mount |grep dislocker |grep $bitlocker_decr_part_dir |cut -d" " -f3)
+  dislocker_backup_partitions=$(LC_ALL=C mount | grep dislocker | grep $bitlocker_decr_part_dir |cut -d" " -f3)
 
-  dir_2_umount=" $ocsroot $pre_ocsroot_path $pre_bitlocker_path $dislocker_backup_partitions"
+  dir_2_umount="$pre_bitlocker_path $dislocker_backup_partitions"
   for im in $dir_2_umount; do
     if mountpoint $im &>/dev/null; then
       cmd_="umount $im"
@@ -16868,6 +16872,7 @@ check_mtd_emmcboot_dev(){
   # This functon checks for the existence of MTD block devices (/dev/mtdblock*)
   # and eMMC boot partitions (/dev/mmcblk*boot*). If found, it collects them
   # into a single, space-separated variable.
+  local spd_mode_=$1
   local -a found_devices
   local special_devices
   
@@ -16876,13 +16881,24 @@ check_mtd_emmcboot_dev(){
   shopt -s nullglob
   
   # Create an array by expanding both glob patterns at once.
-  if [[ "$save_mtdblock" == "yes" ]]; then
-    found_devices+=(/dev/mtdblock*)
-  fi
-  
-  if [[ "$save_mmcblkboot" == "yes" ]]; then
-    found_devices+=(/dev/mmcblk*boot*)
-  fi
+  case "$spd_mode_" in
+  save)
+    if [[ "$save_mtdblock" == "yes" ]]; then
+      found_devices+=(/dev/mtdblock*)
+    fi
+    if [[ "$save_mmcblkboot" == "yes" ]]; then
+      found_devices+=(/dev/mmcblk*boot*)
+    fi
+    ;;
+  restore)
+    if [[ "$restore_mtdblock" == "yes" ]]; then
+      found_devices+=(/dev/mtdblock*)
+    fi
+    if [[ "$restore_mmcblkboot" == "yes" ]]; then
+      found_devices+=(/dev/mmcblk*boot*)
+    fi
+    ;;
+  esac
   
   # Disable nullglob to restore default shell behavior and avoid side effects.
   shopt -u nullglob
@@ -16907,7 +16923,7 @@ restore_mtd_emmcboot_dev_prepare(){
   # ocsroot & target_dir are gloable variables
   local special_dev all_plist retrun_dev
 
-  special_dev="$(check_mtd_emmcboot_dev 2>/dev/null)"
+  special_dev="$(check_mtd_emmcboot_dev restore 2>/dev/null)"
 
   all_plist="$(get_parts_list_from_img "$ocsroot/$target_dir")" 
   for isd in $special_dev; do

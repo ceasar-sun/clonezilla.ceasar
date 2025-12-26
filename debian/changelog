@@ -1,3 +1,69 @@
+clonezilla (5.13.16-drbl1) unstable; urgency=medium
+
+  * ocs-functions: check_mtd_emmcboot_dev improved for saving/restoring
+    cases.  Otherwise it only works for saving mode.
+  * ocs-functions: improved converting tmp image for different
+    source/destination devices, i.e., >=2 devices won't go. Otherwise it
+    will fail.
+  * ocs-iso-2-onie: use "zstd -T0", not "zstdmt" to avoid confusion.
+  * ocs-cvtimg-comp: removed zstdmt to avoid confusion.
+
+ -- Steven Shiau <steven@clonezilla.org>  Thu, 25 Dec 2025 22:31:42 +0800
+
+clonezilla (5.13.15-drbl1) unstable; urgency=medium
+
+  * Added |mtdblock|mmcblk.*boot to allow special devs.
+
+ -- Steven Shiau <steven@clonezilla.org>  Thu, 18 Dec 2025 15:37:00 +0800
+
+clonezilla (5.13.14-drbl1) unstable; urgency=medium
+
+  * Suppressed useless grep error messages.
+
+ -- Steven Shiau <steven@clonezilla.org>  Thu, 18 Dec 2025 10:24:22 +0800
+
+clonezilla (5.13.13-drbl1) unstable; urgency=medium
+
+  * ocs-live-feed-img: add detection for MTD/EMMC devices.
+
+ -- Steven Shiau <steven@clonezilla.org>  Thu, 18 Dec 2025 10:01:30 +0800
+
+clonezilla (5.13.12-drbl1) unstable; urgency=medium
+
+  * ocs-live-feed-img: added -smtd & -smmcb in BT from raw device pseudo_img_cmd.
+
+ -- Steven Shiau <steven@clonezilla.org>  Sun, 14 Dec 2025 20:37:36 +0800
+
+clonezilla (5.13.11-drbl1) unstable; urgency=medium
+
+  * ocs-live-feed-img: added missing options, including -smtd, -smmcb,
+    -rmtd, -rmmcb, -dblk
+
+ -- Steven Shiau <steven@clonezilla.org>  Thu, 11 Dec 2025 16:17:21 +0800
+
+clonezilla (5.13.10-drbl1) unstable; urgency=medium
+
+  * ocs-live-boot-menu: support memtest86+ >=8.0 new file format.
+    It has no longer separate .bin (Legacy) and .efi (UEFI) files,
+    i.e., a single binary for both UEFI and legacy boot.
+  * -
+
+ -- Steven Shiau <steven@clonezilla.org>  Thu, 11 Dec 2025 16:17:19 +0800
+
+clonezilla (5.13.9-drbl1) unstable; urgency=medium
+
+  [ Marcos Diez ]
+
+  * BitLocker partitions now work on the clone_server (ocs-onthefly)
+
+ -- Steven Shiau <steven@clonezilla.org>  Mon, 01 Dec 2025 07:30:00 +0800
+
+clonezilla (5.13.8-drbl1) unstable; urgency=medium
+
+  * Don't unmount $ocsroot $pre_ocsroot_path by default.
+
+ -- Steven Shiau <steven@clonezilla.org>  Sat, 29 Nov 2025 13:37:07 +0800
+
 clonezilla (5.13.7-drbl2) unstable; urgency=medium
 
   [ Marcos Diez ]
