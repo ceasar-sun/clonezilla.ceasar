@@ -1,0 +1,20 @@
+請撰寫一個名為 `check-initrd-module.sh` 的 shell script，用於判斷指定的 initrd (或 initramfs) 檔案中是否包含了特定核心模組 (Kernel module)，或是該模組是否已經直接內建編譯 (built-in) 於該核心版本中。
+
+【功能與參數需求】
+1. 腳本需接受以下參數格式：
+   `check-initrd-module.sh -i [initrd-filename] -c "module-name-1" -c "module-name-2" ...`
+2. `-i` 傳入的 initrd-filename 可能是 soft-link，腳本需能夠正確解析並讀取到原始檔案。
+3. 可透過自動偵測系統中的 `lsinitramfs` 或 `lsinitrd` 命令來讀取 initrd 的內容。
+4. 在 Linux 核心中，模組檔名可能會混用減號 `-` 與底線 `_`，且可能帶有多種壓縮副檔名 (如 `.ko`, `.ko.xz`, `.ko.zst`, `.ko.gz` 等)，比對時必須相容這些情況。
+5. 除了檢查 initrd 內是否打包了 `.ko`，還必須自動解析出該 initrd 對應的核心版本 (可嘗試由 initrd 的真實檔名解析，若失敗則退回使用系統當前的 `uname -r`)，並讀取 `/lib/modules/<kernel-version>/modules.builtin` 檔案來判斷模組是否為核心內建 (built-in)。
+
+【輸出格式需求】
+請依據檢查結果，條列式輸出每一個查詢的模組狀態，格式如下：
+如果是內建模組：`[module-name] : yes : built-in`
+如果在 initrd 中：`[module-name] : yes : ko`
+如果都沒有包含：`[module-name] : no`
+
+範例輸出：
+ext4 : yes : built-in
+btrfs : yes : ko
+dummy-module : no
