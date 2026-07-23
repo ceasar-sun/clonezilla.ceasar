@@ -1,0 +1,31 @@
+請撰寫一 script (say: cnvt-oraclelinuxiso-qcow2) , 目的將 iso 開機檔案內容修改，並轉換成 qcow2 格式。規範如下：
+# Usgae :
+## cnvt-oraclelinuxiso-qcow2.sh -i ${input}.iso \
+ -o ${outoput}.qcow2 \
+ {--output-iso}  \ 
+ -kb rd.live.ram=1
+
+# 任務要求：
+1. 修改開機參數, -kb  為必要參數，用來置換原本開機參數（如 rhgb 等），若原本已有相同開機參數則 **置換** ，若無則 **新增**
+2. 以上修改，以不異動 label 或 menuentry 以外之其他開機設定為原則
+3. -o ${outoput}.qcow2 為必要參數，輸出 qcow2 格式
+4. --output-iso 為選項，非必要，若有此選項，則保留中繼 iso 
+
+# **開機檔案** 包含：
+- ${iso}/EFI/BOOT/grub.cfg
+- ${iso}/boot/grub2/grub.cfg
+
+
+#＃ 處理程序:
+0. 備份原 **開機檔案** 為 ${orig_filename}.cfg-bak
+1. 修改開機選單 grub.cfg 搜尋每筆開機選單，比對是 linux 核心開機參數，移除 quiet 、 加入 -kb 所帶入之參數，若其新增之開機選單，已有其開機參數（如 locales=），則 **置換** 為 locales=en_US.UTF-8 ; 若無相同開機參數(如:toram , rd.live.ram) ，則新增。 
+3. 將完整修改結果，利用 qemu-img convert 成 ${outoput}.qcow2 ; 若有 --output-iso 參數，則保留 iso 當名為 ${input}-new.iso , 若無則不保留
+4. 以顏色差異顯示各 *.cfg 與 *.cfg-bak 之差異處
+
+##檢驗
+完成 cnvt-ocsiso-qcow2 ，請直接進行檢驗，檢驗程序如下：
+1. 試行： cnvt-oraclelinuxiso-qcow2.sh -i OracleLinux-R10-U1-x86_64-boot.iso --output-iso \
+ -o OracleLinux-R10-U1-x86_64-boot.qcow2 \
+ -kb rd.live.ram=1
+2. 檢查 OracleLinux-R10-U1-x86_64-boot.qcow2 內**開機檔案**，之是否符合本任務之要求
+
