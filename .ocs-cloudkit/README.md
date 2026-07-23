@@ -86,6 +86,8 @@ qemu-system-x86_64 -enable-kvm -cpu host -smp 2 -m 4G \
   --prefix ocs-live-20260705
 ```
 
+> **注意：** 在 `--redirect-boot-only` 模式下，產生的輸出檔名皆會強制固定（例如 `redirect-boot-vhd.qcow2`、`redirect-boot-iso.qcow2` 與 `redirect-boot-renew.iso`）。此時若有指定 `--prefix`，腳本僅會提取其目錄路徑部分來作為檔案的輸出目錄，自訂的檔名前綴會被忽略。
+
 ---
 
 ## QEMU 掛載與連接 QCOW2 映像檔 (`qemu-nbd`)

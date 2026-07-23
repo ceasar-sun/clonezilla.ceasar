@@ -24,12 +24,16 @@ Options:
   -i <input.iso>          Path to the input Clonezilla Live ISO image (required)
   --prefix <prefix>       Path/Name prefix of the output files (optional)
                             Default: same as input ISO base name in current directory
+                            Note: Under --redirect-boot-only mode, only the directory
+                            path part is used; the custom filename prefix is ignored.
   --redirect-boot-only    Generate a minimal boot-redirect disk:
                             - UEFI menu: "uEFI firmware setup" (default) + "Boot from Local Disk"
                             - BIOS menu: "Boot from Local Disk" (default)
                             Incompatible with -kb; -kb parameters are silently ignored.
                             Output filenames are fixed: redirect-boot-vhd.qcow2 and/or
                             redirect-boot-iso.qcow2 and redirect-boot-renew.iso.
+                            If --prefix is specified, these files are saved under the
+                            parsed directory path (the filename remains fixed).
   -kb <key=val> ...       Inject one or more kernel boot parameters into the Clonezilla
                           live boot menu entry. Multiple key=value pairs accepted.
   --use-iso-mode, --use-ios-mode
