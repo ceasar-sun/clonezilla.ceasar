@@ -1,0 +1,41 @@
+請撰寫一 script (say: cnvt-ocsiso-qcow2) , 目的將 iso 開機檔案內容修改，並轉換成 qcow2 格式。規範如下：
+# Usgae :
+## cnvt-ocsiso-qcow2.sh -i ${input}.iso \
+ -o ${outoput}.qcow2 \
+ {--output-iso}  \ 
+ -kb  locales=en_US.UTF-8 keyboard-layouts=us ocs_prerun01="dhclient -v" toram=live,syslinux,EFI,boot,.disk,utils
+
+# 任務要求：
+1. 新增預設開機選項
+2. 預設開機選項套用指定開機參數
+3. 以上修改，以不異動 label 或 menuentry 以外之其他開機設定為原則
+4. 輸出為 qcow2 格式, 若有 --output-iso 則保留中繼 iso 
+
+# **開機檔案** 包含：
+- ${iso}/syslinux/syslinux.cfg
+- ${iso}/syslinux/isolinux.cfg
+- ${iso}/boot/grub/grub.cfg
+
+#＃ 處理程序:
+0. 備份原 **開機檔案** 為 ${orig_filename}.cfg-bak
+1. 修改開機選單：
+1.1 syslinux.cfg /isolinux.cfg 搜尋**預設開機選單**：'label Clonezilla live ' (MENU DEFAULT)，修改其 'label Clonezilla live cloud preset' , 'MENU LABEL Clonezilla live  cloud preset (To RAM ,VGA 800x600)'，其他選單則維持不變。
+1.2 grub.cfg 搜尋**預設開機選單**： --id live-default ，修改其 '--id live-default-cloud-preset' ,  'menuentry "Clonezilla live cloud preset (VGA 800x600)" ，其他選單則維持不變。
+2. 修改上述之 1.1, 1.2 之**預設開機選單**之開機參數 : 新開機參數參考 -kb 所帶入之參數，若其新增之開機選單，已有其開機參數（如 locales=），則 **置換** 為 locales=en_US.UTF-8 ; 若無相同開機參數(如:toram) ，則新增為  toram=live,syslinux,EFI,boot,.disk,utils 
+3. 將完整修改結果，利用 qemu-img convert 成 ${outoput}.qcow2 ; 若有 --output-iso 參數，則保留 iso 當名為 ${input}-new.iso , 若無則不保留
+4. 以顏色差異顯示各 *.cfg 與 *.cfg-bak 之差異處
+
+##檢驗
+完成 cnvt-ocsiso-qcow2 ，請直接進行檢驗，檢驗程序如下：
+1. 試行： cnvt-ocsiso-qcow2.sh -i clonezilla-live-amd64.iso --output-iso \
+ -o clonezilla-live-amd64.test.qcow2 \
+ -kb  locales=en_US.UTF-8 keyboard-layouts=us ocs_prerun01="dhclient -v" toram=live,syslinux,EFI,boot,.disk,utils
+2. 檢查 clonezilla-live-amd64.test.qcow2 內**開機檔案**，之是否符合本任務之要求
+
+----
+優化 cnvt-ocsiso-qcow2.sh -> version 2，規範如下：
+1. 加入選項參數 -output-iso ${new_name}.iso , 非必要：保留 qemu-img convert 前的中繼 iso 檔案之 iso 檔
+
+ 
+ 
+

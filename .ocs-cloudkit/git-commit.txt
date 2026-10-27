@@ -1,0 +1,6 @@
+dev branch : ~/.ocs-cloudkit
+cnvt-ocsiso-qcow2 version: 0.4.1
+refactor cnvt-ocsiso-qcow2 with dual packaging, flexible prefixing, and boot fixes
+1. Support Dual-Packaging Modes: Enable both `--use-vhd-mode` and `--use-iso-mode` to run simultaneously in a single execution, sharing extraction and configuration steps.
+2. Deprecate `-o` in Favor of Optional `--prefix`: Replace the mandatory `-o` output flag with `--prefix`.
+3. Fix Boot Kernel Panic & Refine Redirect Output Naming: Resolve a critical VHD boot kernel panic by enabling `dotglob` in `mcopy` to preserve hidden `.disk/` UUID metadata.
